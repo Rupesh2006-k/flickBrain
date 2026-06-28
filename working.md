@@ -286,15 +286,3 @@ npm run fix-thumbnails   # Fix missing YouTube thumbnails in DB
 12. Contributing
 13. License (MIT)
 
-## Formatting rules
-- Use proper markdown: #, ##, ###, tables, code blocks, bullets
-- Code blocks with language tags: ```bash ```, ```js ```, ```env ```
-- Emoji in section headers to make it scannable
-- Tables for env variables and API endpoints
-- Keep language simple and clear — developer friendly
-- badges at top using shields.io format
-- No filler text — every line should be useful
-
-## Output
-One complete README.md file.
-Production quality — good enough for a GitHub portfolio project.
