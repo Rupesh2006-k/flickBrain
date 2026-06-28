@@ -241,3 +241,176 @@ export const seedNetflixContent = async () => {
     console.error('❌ Error seeding Netflix content:', err.message);
   }
 };
+
+export const seedYoutubeContent = async (userId) => {
+  try {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) {
+      console.warn('⚠️ YOUTUBE_API_KEY is not defined. Skipping YouTube seeding.');
+      return;
+    }
+
+    // Step 1: Fetch user's watched items to know their interests
+    const watchedItems = await WatchedItem.find({ userId }).populate('contentId');
+    const watchedYoutubeIds = new Set(
+      watchedItems
+        .filter(w => w.source === 'youtube')
+        .map(w => w.contentId?.externalId)
+        .filter(Boolean)
+    );
+
+    // Step 2: Check candidate count in DB (not watched by user)
+    const candidateCount = await Content.countDocuments({
+      source: 'youtube',
+      externalId: { $nin: Array.from(watchedYoutubeIds) }
+    });
+
+    // If we already have 50+ candidates, we don't need to seed more
+    if (candidateCount > 50) {
+      return;
+    }
+
+    console.log('🌱 Seeding candidate YouTube content from YouTube API...');
+
+    // We will collect candidate video details
+    const videoIdsToFetch = new Set();
+
+    // 1. Get global popular videos (chart = mostPopular)
+    try {
+      const popularUrl = `https://www.googleapis.com/youtube/v3/videos?part=id&chart=mostPopular&maxResults=20&key=${apiKey}`;
+      const popularRes = await axios.get(popularUrl);
+      const items = popularRes.data?.items || [];
+      items.forEach(item => {
+        if (item.id && !watchedYoutubeIds.has(item.id)) {
+          videoIdsToFetch.add(item.id);
+        }
+      });
+    } catch (e) {
+      console.error('⚠️ Failed to fetch popular YouTube videos:', e.message);
+    }
+
+    // 2. Search based on user's watched tags/keywords (personalized seeding)
+    const keywords = [];
+    watchedItems.forEach(item => {
+      if (item.contentId && item.contentId.title) {
+        // extract words of length >= 4 that are not common search words
+        const words = item.contentId.title
+          .toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .split(/\s+/)
+          .filter(w => w.length >= 4 && !['youtube', 'video', 'watch', 'official', 'music', 'channel', 'series', 'season', 'episode'].includes(w));
+        keywords.push(...words);
+      }
+    });
+
+    // Count keyword frequencies
+    const freq = {};
+    keywords.forEach(k => freq[k] = (freq[k] || 0) + 1);
+    const topKeywords = Object.keys(freq)
+      .sort((a, b) => freq[b] - freq[a])
+      .slice(0, 3); // top 3 keywords
+
+    if (topKeywords.length > 0) {
+      for (const keyword of topKeywords) {
+        try {
+          const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=id&maxResults=10&q=${encodeURIComponent(keyword)}&type=video&key=${apiKey}`;
+          const searchRes = await axios.get(searchUrl);
+          const items = searchRes.data?.items || [];
+          items.forEach(item => {
+            if (item.id?.videoId && !watchedYoutubeIds.has(item.id.videoId)) {
+              videoIdsToFetch.add(item.id.videoId);
+            }
+          });
+        } catch (e) {
+          console.error(`⚠️ YouTube search failed for keyword "${keyword}":`, e.message);
+        }
+      }
+    } else {
+      // Default fallback queries if no history
+      const defaultQueries = ['tech review', 'comedy show', 'documentary', 'educational video'];
+      for (const query of defaultQueries) {
+        try {
+          const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=id&maxResults=5&q=${encodeURIComponent(query)}&type=video&key=${apiKey}`;
+          const searchRes = await axios.get(searchUrl);
+          const items = searchRes.data?.items || [];
+          items.forEach(item => {
+            if (item.id?.videoId && !watchedYoutubeIds.has(item.id.videoId)) {
+              videoIdsToFetch.add(item.id.videoId);
+            }
+          });
+        } catch (e) {
+          console.error(`⚠️ YouTube search failed for default query "${query}":`, e.message);
+        }
+      }
+    }
+
+    if (videoIdsToFetch.size === 0) {
+      console.log('⚠️ No new YouTube video candidates found to seed.');
+      return;
+    }
+
+    // Convert Set to Array and batch fetch video details (up to 50 videos)
+    const idArray = Array.from(videoIdsToFetch).slice(0, 50);
+    const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${idArray.join(',')}&key=${apiKey}`;
+    const detailsRes = await axios.get(detailsUrl);
+    const detailItems = detailsRes.data?.items || [];
+
+    const ytCategoryMap = {
+      '1': 'Film & Animation',
+      '2': 'Autos & Vehicles',
+      '10': 'Music',
+      '15': 'Pets & Animals',
+      '17': 'Sports',
+      '18': 'Short Movies',
+      '19': 'Travel & Events',
+      '20': 'Gaming',
+      '21': 'Videoblogging',
+      '22': 'People & Blogs',
+      '23': 'Comedy',
+      '24': 'Entertainment',
+      '25': 'News & Politics',
+      '26': 'Howto & Style',
+      '27': 'Education',
+      '28': 'Science & Technology',
+      '29': 'Nonprofits & Activism'
+    };
+
+    let seededCount = 0;
+    for (const item of detailItems) {
+      const videoId = item.id;
+      const snippet = item.snippet || {};
+      const title = snippet.title || 'Untitled YouTube Video';
+      const description = snippet.description || '';
+      const tags = snippet.tags || [];
+      const genreName = ytCategoryMap[snippet.categoryId] || 'Video';
+      const releaseYear = snippet.publishedAt ? new Date(snippet.publishedAt).getFullYear() : null;
+
+      const poster = (snippet.thumbnails && (snippet.thumbnails.maxres || snippet.thumbnails.high || snippet.thumbnails.medium || snippet.thumbnails.default))
+        ? (snippet.thumbnails.maxres || snippet.thumbnails.high || snippet.thumbnails.medium || snippet.thumbnails.default).url
+        : `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
+      // Find or create
+      const exists = await Content.findOne({ externalId: videoId, source: 'youtube' });
+      if (!exists) {
+        await Content.create({
+          title,
+          source: 'youtube',
+          externalId: videoId,
+          type: 'video',
+          description,
+          tags: [...new Set([genreName, ...tags])],
+          genre: [genreName],
+          poster,
+          releaseYear,
+          tmdbData: item
+        });
+        seededCount++;
+      }
+    }
+
+    console.log(`✅ YouTube candidate seeding finished. Seeded ${seededCount} new videos.`);
+  } catch (err) {
+    console.error('❌ Error seeding YouTube content:', err.message);
+  }
+};
+

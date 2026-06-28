@@ -3,7 +3,7 @@ import WatchedItem from '../models/WatchedItem.model.js';
 import Content from '../models/Content.model.js';
 import { generateScores } from '../services/scorer.service.js';
 import { rerank } from '../services/llmRanker.service.js';
-import { seedNetflixContent } from '../services/tmdb.service.js';
+import { seedNetflixContent, seedYoutubeContent } from '../services/tmdb.service.js';
 import { success, error } from '../utils/apiResponse.js';
 
 export const getRecommendations = async (req, res, next) => {
@@ -12,6 +12,9 @@ export const getRecommendations = async (req, res, next) => {
 
     // Trigger non-blocking seeding of Netflix candidates from TMDB
     seedNetflixContent().catch(err => console.error('Background Netflix seed failed:', err.message));
+
+    // Trigger non-blocking seeding of YouTube candidates from YouTube API
+    seedYoutubeContent(userId).catch(err => console.error('Background YouTube seed failed:', err.message));
 
     // Step 2 — Run scorer
     const candidates = await generateScores(userId);

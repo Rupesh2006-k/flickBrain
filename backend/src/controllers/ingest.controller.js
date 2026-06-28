@@ -4,7 +4,7 @@ import axios from 'axios';
 import Content from '../models/Content.model.js';
 import WatchedItem from '../models/WatchedItem.model.js';
 import User from '../models/User.model.js';
-import { enrichContent, seedNetflixContent } from '../services/tmdb.service.js';
+import { enrichContent, seedNetflixContent, seedYoutubeContent } from '../services/tmdb.service.js';
 import { success, error } from '../utils/apiResponse.js';
 
 // Helper to parse CSV buffer
@@ -268,6 +268,11 @@ export const youtubeIngest = async (req, res, next) => {
       ingestedItems.push({ title, videoId });
     }
     console.log(ingestedItems);
+
+    // Trigger background YouTube seeding based on this user's watch history
+    seedYoutubeContent(user._id).catch(err => {
+      console.error(`❌ Background YouTube seeding failed for user ${user._id}:`, err.message);
+    });
 
     return success(res, 'YouTube history ingested successfully.', {
       count: ingestedItems.length,
