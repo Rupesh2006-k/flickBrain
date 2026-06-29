@@ -7,5 +7,6 @@ const router = express.Router();
 router.get('/', verifyToken, recommendController.getRecommendations);
 router.post('/dismiss/:id', verifyToken, recommendController.dismissRecommendation);
 router.post('/rate/:id', verifyToken, recommendController.rateContent);
+router.post('/auto-watchlist', verifyToken, recommendController.autoAddToWatchlist);
 
 export default router;

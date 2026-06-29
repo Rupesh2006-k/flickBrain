@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { RiYoutubeFill, RiCheckLine, RiDeleteBinLine, RiCheckboxCircleFill, RiBookmarkLine } from 'react-icons/ri'
+import { RiYoutubeFill, RiCheckLine, RiDeleteBinLine, RiCheckboxCircleFill, RiBookmarkLine, RiMagicLine, RiLoader5Line, RiCloseLine } from 'react-icons/ri'
 import api from '../api/axios'
 import useToast from '../hooks/useToast'
 
@@ -8,6 +8,10 @@ const Watchlist = () => {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('towatch')
   const { showToast } = useToast()
+
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiStep, setAiStep] = useState('')
+  const [aiResults, setAiResults] = useState(null)
 
   const fetchWatchlist = async () => {
     setLoading(true)
@@ -20,6 +24,41 @@ const Watchlist = () => {
       showToast('Failed to retrieve your watchlist.', 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAiRecommend = async () => {
+    setAiLoading(true)
+    setAiStep('Scanning trending lists on the internet...')
+    
+    // Set periodic steps for UX
+    const step1 = setTimeout(() => setAiStep('Analyzing popular YouTube videos...'), 1000)
+    const step2 = setTimeout(() => setAiStep('Fetching TMDB movie charts...'), 2000)
+    const step3 = setTimeout(() => setAiStep('Evaluating likes and views with Groq AI...'), 3500)
+    const step4 = setTimeout(() => setAiStep('Matching with your watch history...'), 5000)
+
+    try {
+      const res = await api.post('/recommend/auto-watchlist')
+      const addedItems = res.data?.data?.addedItems || []
+      
+      if (addedItems.length === 0) {
+        showToast('All suggested AI recommendations are already in your watchlist!', 'info')
+      } else {
+        setAiResults(addedItems)
+        showToast('AI recommendations added successfully!', 'success')
+        fetchWatchlist()
+      }
+    } catch (err) {
+      console.error(err)
+      const errorMsg = err.response?.data?.message || 'Failed to generate AI recommendations.'
+      showToast(errorMsg, 'error')
+    } finally {
+      clearTimeout(step1)
+      clearTimeout(step2)
+      clearTimeout(step3)
+      clearTimeout(step4)
+      setAiLoading(false)
+      setAiStep('')
     }
   }
 
@@ -77,6 +116,170 @@ const Watchlist = () => {
           Save candidates to watch later or review completed lists
         </p>
       </div>
+
+      {/* AI Recommendation Banner Card */}
+      <div className="relative overflow-hidden rounded-2xl border border-[#7c3aed]/30 bg-gradient-to-r from-purple-950/20 via-[#13131a] to-blue-950/10 p-5 md:p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-300 hover:border-[#7c3aed]/50">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-[#7c3aed]/5 blur-3xl rounded-full -mr-10 -mt-10" />
+        <div className="flex gap-4 items-start">
+          <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-[#7c3aed]/10 border border-[#7c3aed]/30 flex items-center justify-center text-[#7c3aed] shadow-lg shadow-purple-950/20 animate-pulse">
+            <RiMagicLine className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-white font-bold text-base md:text-lg flex items-center gap-1.5">
+              FlickBrain AI Recommendation Bot
+              <span className="text-[10px] bg-[#7c3aed]/30 text-purple-200 border border-[#7c3aed]/50 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider">
+                Groq Enabled
+              </span>
+            </h2>
+            <p className="text-slate-400 text-xs md:text-sm max-w-xl mt-1 leading-relaxed">
+              Let AI scan the internet for trending videos, movies, and shows matching your unique taste. The AI will evaluate likes, views, and ratings, then automatically add the top 3 picks to your <strong>To Watch</strong> list.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={handleAiRecommend}
+          disabled={aiLoading}
+          className="w-full md:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-[#7c3aed] to-[#4f46e5] hover:from-[#6d28d9] hover:to-[#4338ca] text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-[#7c3aed]/20 hover:shadow-[#7c3aed]/40 disabled:opacity-50 disabled:cursor-not-allowed group flex-shrink-0"
+        >
+          {aiLoading ? (
+            <>
+              <RiLoader5Line className="w-4 h-4 animate-spin text-white" />
+              <span>Generating...</span>
+            </>
+          ) : (
+            <>
+              <RiMagicLine className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              <span>Auto-Fill with AI</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* AI Processing Status Overlay */}
+      {aiLoading && aiStep && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex flex-col items-center justify-center z-50 p-4">
+          <div className="bg-[#13131a] border border-[#1e1e2e] rounded-2xl p-8 max-w-sm w-full text-center space-y-6 shadow-2xl">
+            <div className="relative w-20 h-20 mx-auto">
+              <div className="absolute inset-0 rounded-full border-4 border-purple-950/50" />
+              <div className="absolute inset-0 rounded-full border-4 border-[#7c3aed] border-t-transparent animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center text-[#7c3aed]">
+                <RiMagicLine className="w-8 h-8 animate-pulse" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-white font-bold text-lg animate-pulse">AI Watchlist Assistant</h3>
+              <p className="text-slate-400 text-sm h-10 flex items-center justify-center transition-all duration-300">
+                {aiStep}
+              </p>
+            </div>
+            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-[#7c3aed] h-full rounded-full animate-pulse" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Recommendation Success Modal */}
+      {aiResults && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#13131a] border border-[#1e1e2e] rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-950/40 via-[#13131a] to-blue-950/20 p-5 border-b border-[#1e1e2e] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-[#7c3aed]/10 border border-[#7c3aed]/30 flex items-center justify-center text-[#7c3aed]">
+                  <RiMagicLine className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-base">AI Auto-Added Items</h3>
+                  <p className="text-slate-400 text-xs mt-0.5">{aiResults.length} {aiResults.length === 1 ? 'item' : 'items'} added to your Watchlist</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAiResults(null)}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                <RiCloseLine className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body / Recommendations List */}
+            <div className="p-6 overflow-y-auto space-y-5">
+              <p className="text-slate-300 text-xs md:text-sm">
+                FlickBrain's AI selected these items from popular trending content on the web based on your watch history:
+              </p>
+              
+              <div className="space-y-4">
+                {aiResults.map((item, idx) => {
+                  const content = item.watchlistItem?.contentId;
+                  const reason = item.reason;
+                  const title = content?.title || 'Untitled Content';
+                  const poster = content?.poster;
+                  const source = content?.source;
+
+                  return (
+                    <div 
+                      key={item.watchlistItem?._id || idx}
+                      className="p-4 bg-[#0a0a0f] border border-[#1e1e2e] rounded-xl flex gap-4 items-start"
+                    >
+                      {/* Poster */}
+                      <div className="flex-shrink-0">
+                        {poster ? (
+                          <img
+                            src={poster}
+                            alt={title}
+                            className="w-12 h-16 object-cover rounded-lg border border-[#1e1e2e]"
+                          />
+                        ) : (
+                          <div className={`w-12 h-16 rounded-lg bg-gradient-to-br ${getGradientClass(source)} flex items-center justify-center text-sm font-bold text-white border border-[#1e1e2e]`}>
+                            {title.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Content details and AI reason */}
+                      <div className="flex-grow min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="text-white font-semibold text-sm truncate" title={title}>
+                            {title}
+                          </h4>
+                          <span className="flex items-center gap-1 text-[10px] text-slate-400 flex-shrink-0">
+                            {source === 'youtube' ? (
+                              <>
+                                <RiYoutubeFill className="w-3.5 h-3.5 text-[#ff0000]" />
+                                <span>YouTube</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-[#e50914] font-extrabold text-[10px]">N</span>
+                                <span>Netflix</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                        
+                        <div className="mt-2.5 bg-[#13131a] border-l-2 border-[#7c3aed] px-3 py-2 rounded-r-lg text-[11px] md:text-xs text-purple-200/90 leading-relaxed font-medium">
+                          <span className="font-bold text-[#7c3aed] text-[10px] uppercase tracking-wider block mb-0.5">AI Reason:</span>
+                          "{reason}"
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-[#0a0a0f]/50 border-t border-[#1e1e2e] flex justify-end">
+              <button
+                onClick={() => setAiResults(null)}
+                className="px-5 py-2.5 bg-[#7c3aed] hover:bg-[#6d28d9] text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer shadow-md"
+              >
+                Awesome, view watchlist
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs Row */}
       <div className="flex border-b border-[#1e1e2e] gap-6 text-sm">
